@@ -1,0 +1,74 @@
+#Set ENV Vars - SMTP
+HL_SMTP_HOST=smtp.company.com
+HL_SMTP_PORT=587
+HL_SMTP_USER=shared-mailer@company.com
+HL_SMTP_PASSWORD=xxxxxx
+HL_EMAIL_SENDER=shared-mailer@company.com
+HL_SMTP_TLS=true
+HL_SMTP_AUTH=true
+
+#Set ENV Vars - PostgreSQL
+HL_PG_SERVER=postgres
+HL_PG_PORT=5432
+HL_PG_DB=highlight
+HL_PG_USER=highlight_root
+HL_PG_PASSWORD=highlight
+HL_PG_SCHEMA=highlight
+
+#Set ENV Vars - Hostname
+# NOTE: "localhost" assumes you're browsing from the same machine running docker compose.
+# Change every "localhost" below to your host's real reachable hostname/IP otherwise -
+# keep it consistent with PUBLIC_HOST in ../.env (used by the keycloak and nginx services).
+# https + no port: browser traffic now goes through the nginx gateway on the standard 443 port.
+HL_ROOT_URL=https://localhost/
+
+# Security options
+HL_SECURITY_ANTI_CLICK_JACKING=SAMEORIGIN
+HL_SECURITY_HEADER=true
+
+#Set ENV Vars - Admin
+HL_ADMIN_MAIL=change.me@castsoftware.com
+# Must satisfy the Keycloak realm's password policy (digits(1), length(14), upperCase(1),
+# lowerCase(1), specialChars(1)) - the portal seeds this as the admin's initial Keycloak
+# credential during migration; a weaker value fails silently (non-blocking, but admin login
+# via Keycloak won't work). See ../../Keycloak-Notes.md issue 7.
+HL_ADMIN_PWD=Adminadmin123!
+
+#Set ENV Vars - HL WAR Settings
+SPRING_PROFILE=postgres-hikari,csrf
+# Internal docker-network URL, not browser-facing - cvedb is never proxied through nginx or
+# published on a host port, matching hl-helmchart keeping cvedb ClusterIP-only.
+HL_CVE_API_URL=http://cvedb:8082
+HL_CVE_LOCAL_URL=http://cvedb:8082
+HL_SCA_SAM_SECRET=xxxxxx
+
+#Licence information (highlight-license_JosArtero_20271231.properties)
+HL_LICENCE_0=
+HL_LICENCE_5=
+HL_LICENCE_6=
+HL_LICENCE_10=
+HL_LICENCE_11=
+HL_LICENCE_7=
+HL_LICENCE_9=
+HL_LICENCE_8=
+
+#Set ENV Vars - Keycloak (new in HL 6)
+# Browser-facing (OIDC issuer/redirect must match what the browser sees) - goes through the
+# nginx gateway's /auth path, same host as HL_ROOT_URL, https + no port.
+HL_KEYCLOAK_ADMIN_URL=https://localhost/auth
+HL_KEYCLOAK_REALM=hl-portal
+HL_KEYCLOAK_ADMIN_CLIENT_ID=highlight-admin
+# HL_KEYCLOAK_ADMIN_CLIENT_SECRET / HL_KEYCLOAK_PORTAL_CLIENT_SECRET / HL_KEYCLOAK_WEBHOOK_SECRET
+# are deliberately NOT set here - run.sh only overrides vars it finds in this file, so leaving
+# them out lets the values set in docker-compose.yml's `environment:` block (sourced from the
+# SAME .env values keycloak uses) pass through untouched. This guarantees both services always
+# agree on these secrets instead of relying on two separately-edited copies staying in sync.
+# Keep false - the entrypoint wrapper (entrypoint-with-truststore.sh, wired up in
+# docker-compose.yml) imports the nginx gateway's cert into the JVM's trust store instead, so
+# HTTPS calls to HL_KEYCLOAK_ADMIN_URL validate properly even with the self-signed cert from
+# generate-self-signed-cert.sh. This flag doesn't reliably cover every HTTPS call the portal
+# makes to Keycloak (confirmed: the admin-client's token-grant call ignores it), so don't rely
+# on it as the fix.
+HL_KEYCLOAK_DISABLE_SSL_VALIDATION=false
+HL_KEYCLOAK_PORTAL_CLIENT_ID=highlight-portal
+HL_LEGACY_TOKEN_SUNSET_DATE=

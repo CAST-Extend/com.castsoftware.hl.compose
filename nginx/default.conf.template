@@ -1,0 +1,53 @@
+# Single TLS gateway for the stack, mirroring hl-helmchart's templates/ingress.yaml:
+# "/" -> highlightportal, "/auth" -> keycloak. Only these two paths are proxied - cvedb and
+# postgres stay reachable only over the internal docker network, never through here, matching
+# the helm chart keeping them ClusterIP-only.
+#
+# ${PUBLIC_HOST} is substituted from the environment at container start (official nginx image
+# templating - see docker-compose.yml). nginx's own runtime $variables (like $host below) are
+# left untouched by envsubst since they aren't shell environment variables.
+
+server {
+    listen 80;
+    server_name ${PUBLIC_HOST};
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name ${PUBLIC_HOST};
+
+    ssl_certificate     /etc/nginx/certs/fullchain.pem;
+    ssl_certificate_key /etc/nginx/certs/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+
+    # Highlight supports uploading source-code archives for analysis - keep generous limits.
+    client_max_body_size 2048m;
+    proxy_connect_timeout 300s;
+    proxy_send_timeout    300s;
+    proxy_read_timeout    300s;
+
+    # Keycloak - browser-facing OIDC endpoints (login, tokens, admin console). Path must stay
+    # "/auth" to match KC_HTTP_RELATIVE_PATH on the keycloak service.
+    location /auth/ {
+        proxy_pass http://keycloak:8080/auth/;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Host  $host;
+        proxy_set_header X-Forwarded-Port  443;
+    }
+
+    # Highlight portal - everything else
+    location / {
+        proxy_pass http://highlightportal:8080/;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Host  $host;
+        proxy_set_header X-Forwarded-Port  443;
+    }
+}

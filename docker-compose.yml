@@ -1,0 +1,191 @@
+name: highlight
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_INITDB_ARGS: "-E 'UTF-8' --lc-collate=C --lc-ctype=C"
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: postgres
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./postgres/postgresql.conf.sample:/usr/share/postgresql/postgresql.conf.sample:ro
+      - ./postgres/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
+    shm_size: "4gb"
+    ports:
+      - "2280:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  keycloak:
+    image: jartero/hlkeycloak:1.0.6
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Bootstrap admin - see Keycloak-Notes.md issue 6 (Keycloak 26+ var names, one-time-only bootstrap)
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME:-bootstrap-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?set KC_BOOTSTRAP_ADMIN_PASSWORD in .env}
+
+      # Permanent admin
+      KC_PERMANENT_ADMIN_USER: ${KC_PERMANENT_ADMIN_USER:-admin}
+      KC_PERMANENT_ADMIN_PASSWORD: ${KC_PERMANENT_ADMIN_PASSWORD:?set KC_PERMANENT_ADMIN_PASSWORD in .env}
+      KC_PERMANENT_ADMIN_EMAIL: ${KC_PERMANENT_ADMIN_EMAIL:-change.me@castsoftware.com}
+
+      # Hostname / routing
+      KC_HOSTNAME: ${PUBLIC_HOST:-localhost}
+      KC_HTTP_RELATIVE_PATH: /auth
+      KC_APP_PORT: "8080"
+      # See Keycloak-Notes.md issue 5 - required, or post-init.sh's health check loops on HTTP 000 forever
+      KC_INTERNAL_URL: http://localhost:8080
+
+      # TLS is terminated by the nginx gateway in front of this stack (see the nginx service
+      # below), not here - Keycloak itself still serves plain HTTP internally. KC_PROXY_HEADERS
+      # tells Keycloak to trust nginx's X-Forwarded-* headers so it reports https in issued URLs,
+      # matching KC_PROXY_HEADERS: xforwarded in hl-helmchart's ingress mode.
+      KC_HTTP_ENABLED: "true"
+      KC_PROXY_HEADERS: xforwarded
+
+      # Realm - see Keycloak-Notes.md issue 2: MUST stay "hl-portal", not "highlight"
+      REALM_NAME: hl-portal
+      # NOTE: no trailing slash - see Keycloak-Notes.md issue 8. https + no port since this is
+      # now reached through the nginx gateway on the standard 443 port.
+      APP_BASE_URL: https://${PUBLIC_HOST:-localhost}
+
+      # Client secrets - shared with the highlightportal service below via the same .env values
+      KC_HL_CLIENT_SECRET: ${KC_HL_CLIENT_SECRET:?set KC_HL_CLIENT_SECRET in .env}
+      KC_HL_ADMIN_SECRET: ${KC_HL_ADMIN_SECRET:?set KC_HL_ADMIN_SECRET in .env}
+
+      # Webhook / event listener SPI (Keycloak -> Highlight callback). Since hlkeycloak:1.0.6 these
+      # are native Keycloak SPI options read by the hl-event-webhook listener itself - the old
+      # KC_HL_WEBHOOK_URL/_SECRET names are ignored. Endpoint is KeycloakEventsWebService in the
+      # 6.0.1 WAR. Internal service DNS over plain HTTP on purpose: the upstream compose's
+      # KC_WEBHOOK_HOST_ALIAS + host-gateway extra_hosts only exists to reach a portal running on
+      # the host over TLS (cert issued for its real DNS name) - not needed here, the portal is on
+      # the same docker network and the SPI's HttpClient doesn't require https.
+      KC_SPI_EVENTS_LISTENER_HL_EVENT_WEBHOOK_URL: http://highlightportal:8080/WS2/public/keycloak-events
+      KC_SPI_EVENTS_LISTENER_HL_EVENT_WEBHOOK_SECRET: ${KC_HL_WEBHOOK_SECRET:?set KC_HL_WEBHOOK_SECRET in .env}
+
+      # SMTP - see Keycloak-Notes.md issue 3 (plain SMTP_*, no KC_ prefix; SMTP_FROM is required)
+      SMTP_HOST: ${SMTP_HOST:-smtp.company.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_FROM: ${SMTP_FROM:-shared-mailer@company.com}
+      SMTP_FROM_DISPLAY_NAME: ${SMTP_FROM_DISPLAY_NAME:-CAST Highlight}
+      SMTP_USER: ${SMTP_USER:-shared-mailer@company.com}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:?set SMTP_PASSWORD in .env}
+
+      # Database - dedicated database/schema, separate from the Highlight one (init-db.sh)
+      # See Keycloak-Notes.md issue 1 (real Keycloak Quarkus var names)
+      KC_DB: postgres
+      KC_DB_URL_HOST: postgres
+      KC_DB_URL_PORT: "5432"
+      KC_DB_URL_DATABASE: keycloak
+      KC_DB_SCHEMA: keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: keycloak
+
+      # Single-node deployment - disable Infinispan/JGroups clustering (JDBC_PING) so Keycloak
+      # doesn't try to discover cluster peers over the DB, which only adds noisy JOIN-timeout
+      # errors to the logs (same as the upstream hlkeycloak 1.0.6 compose).
+      KC_CACHE: local
+    volumes:
+      # /opt/keycloak/data/init/.initialized is entrypoint.sh's own "already bootstrapped"
+      # sentinel - without this persisted, `docker compose down` + `up` loses it and
+      # entrypoint.sh redoes first-run init every time, which fails forever after the first
+      # success (post-init.sh deletes the bootstrap-admin user once done). See Keycloak-Notes.md
+      # issue 9.
+      - keycloak-data:/opt/keycloak/data
+    # No published port - only reachable via the nginx gateway's /auth path (matches
+    # hl-helmchart, where keycloak's Service is ClusterIP and only the shared Ingress is
+    # externally reachable) or from other containers over the internal docker network.
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - >-
+          curl -sk -H "Host: ${PUBLIC_HOST:-localhost}" -o /dev/null -w '%{http_code}'
+          http://localhost:8080/auth/realms/master | grep -q 200
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+    restart: unless-stopped
+
+  cvedb:
+    image: jartero/cvedb:6.0.1
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./cvedb/cvedb.properties:/home/highlight/cvedb/config/cvedb.properties:ro
+    # No published port - cvedb is only ever called backend-to-backend by highlightportal over
+    # the internal docker network (http://cvedb:8082), matching hl-helmchart where cvedb stays
+    # ClusterIP-only and is never reached directly by the browser.
+    restart: unless-stopped
+
+  highlightportal:
+    image: jartero/highlightportal:6.0.1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      # Confirmed the portal's own KeycloakHealthChecker does NOT retry indefinitely: if it starts
+      # before Keycloak is actually answering requests (container "started" != Keycloak "ready" -
+      # first boot takes ~30-60s), DatabaseManager gets permanently stuck in
+      # KEYCLOAK_CHECK_CONFIGURATION and every request is redirected to versionerror.html for the
+      # rest of that container's life, even after Keycloak comes up moments later. Only a portal
+      # restart clears it. So wait for Keycloak's own healthcheck instead of just its container
+      # starting.
+      keycloak:
+        condition: service_healthy
+    environment:
+      # Deliberately not in portal/properties.hl-docker - see the comment there. Sourced from the
+      # SAME .env values as the keycloak service above so the two can never drift out of sync.
+      HL_KEYCLOAK_ADMIN_CLIENT_SECRET: ${KC_HL_ADMIN_SECRET:?set KC_HL_ADMIN_SECRET in .env}
+      HL_KEYCLOAK_PORTAL_CLIENT_SECRET: ${KC_HL_CLIENT_SECRET:?set KC_HL_CLIENT_SECRET in .env}
+      HL_KEYCLOAK_WEBHOOK_SECRET: ${KC_HL_WEBHOOK_SECRET:?set KC_HL_WEBHOOK_SECRET in .env}
+    volumes:
+      - tmp-highlight:/tmp
+      # SAML SP config (see Dockerfile's /config comment) - without this named volume it lives
+      # only in the container's writable layer and is lost on the next recreate (image update,
+      # `down`+`up`), forcing SAML setup to be redone.
+      - saml-config:/config
+      - ./portal/properties.hl-docker:/properties.hl-docker:ro
+      # Makes the JVM trust the nginx gateway's cert - see the script's own header comment for why
+      # HL_KEYCLOAK_DISABLE_SSL_VALIDATION alone isn't sufficient.
+      - ./portal/entrypoint-with-truststore.sh:/entrypoint-with-truststore.sh:ro
+      - ./nginx/certs/fullchain.pem:/certs/fullchain.pem:ro
+    entrypoint: ["/bin/bash", "/entrypoint-with-truststore.sh"]
+    # No published port - only reachable via the nginx gateway's "/" path (matches
+    # hl-helmchart, where highlightportal's Service is ClusterIP behind the shared Ingress) or
+    # from other containers over the internal docker network.
+    restart: unless-stopped
+
+  nginx:
+    # TLS gateway for the whole stack - single external entrypoint, mirroring hl-helmchart's
+    # templates/ingress.yaml ("/" -> highlightportal, "/auth" -> keycloak). See README.md
+    # "TLS / nginx gateway" for the one-time cert setup this needs before first `up`.
+    image: nginx:1.27-alpine
+    depends_on:
+      keycloak:
+        condition: service_healthy
+      highlightportal:
+        condition: service_started
+    environment:
+      PUBLIC_HOST: ${PUBLIC_HOST:-localhost}
+    volumes:
+      - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+    ports:
+      - "80:80"
+      - "443:443"
+    restart: unless-stopped
+
+# Named volumes persist data across `docker compose down` (only `down -v` removes them).
+volumes:
+  db-data:
+  tmp-highlight:
+  keycloak-data:
+  saml-config:
