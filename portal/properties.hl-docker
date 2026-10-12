@@ -55,7 +55,14 @@ HL_LICENCE_8=
 #Set ENV Vars - Keycloak (new in HL 6)
 # Browser-facing (OIDC issuer/redirect must match what the browser sees) - goes through the
 # nginx gateway's /auth path, same host as HL_ROOT_URL, https + no port.
-HL_KEYCLOAK_ADMIN_URL=https://localhost/auth
+HL_KEYCLOAK_PUBLIC_URL=https://localhost/auth
+# Server-to-server calls (token, userinfo, certs, /admin/* API) - new in 6.0.2, replaces the
+# single HL_KEYCLOAK_ADMIN_URL of 6.0.1. Kept identical to HL_KEYCLOAK_PUBLIC_URL on purpose:
+# KC_HOSTNAME is a bare hostname, so Keycloak derives the token issuer's scheme/port from each
+# request - a direct http://keycloak:8080/auth call would get a different issuer than the one
+# the browser sees and the login would fail. The nginx gateway doesn't block /admin/* (unlike an
+# F5 front), so going through it is fine; the portal only logs a warning that both URLs are identical.
+HL_KEYCLOAK_INTERNAL_URL=https://localhost/auth
 HL_KEYCLOAK_REALM=hl-portal
 HL_KEYCLOAK_ADMIN_CLIENT_ID=highlight-admin
 # HL_KEYCLOAK_ADMIN_CLIENT_SECRET / HL_KEYCLOAK_PORTAL_CLIENT_SECRET / HL_KEYCLOAK_WEBHOOK_SECRET
@@ -65,7 +72,7 @@ HL_KEYCLOAK_ADMIN_CLIENT_ID=highlight-admin
 # agree on these secrets instead of relying on two separately-edited copies staying in sync.
 # Keep false - the entrypoint wrapper (entrypoint-with-truststore.sh, wired up in
 # docker-compose.yml) imports the nginx gateway's cert into the JVM's trust store instead, so
-# HTTPS calls to HL_KEYCLOAK_ADMIN_URL validate properly even with the self-signed cert from
+# HTTPS calls to HL_KEYCLOAK_INTERNAL_URL validate properly even with the self-signed cert from
 # generate-self-signed-cert.sh. This flag doesn't reliably cover every HTTPS call the portal
 # makes to Keycloak (confirmed: the admin-client's token-grant call ignores it), so don't rely
 # on it as the fix.

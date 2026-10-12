@@ -62,7 +62,7 @@ expired.
 
 ---
 
-`HL_KEYCLOAK_ADMIN_URL` in `portal/properties.hl-docker` is used by highlightportal for backend
+`HL_KEYCLOAK_INTERNAL_URL` in `portal/properties.hl-docker` is used by highlightportal for backend
 admin-API calls to Keycloak, not just browser links - now that it's `https://`, those calls need
 to trust whatever cert nginx presents. The `highlightportal` service's entrypoint is wrapped by
 `portal/entrypoint-with-truststore.sh`, which imports `nginx/certs/fullchain.pem` into the JVM's
@@ -80,8 +80,8 @@ keep it `false`.) If you replace the cert (self-signed or real), `docker compose
 ## Prerequisites
 
 - Docker Engine + Docker Compose v2 (`docker compose`, not the legacy standalone `docker-compose`)
-- Pull access to `jartero/hlkeycloak:1.0.6`, `jartero/cvedb:6.0.1` and
-  `jartero/highlightportal:6.0.1`
+- Pull access to `jartero/hlkeycloak:1.0.10`, `jartero/cvedb:6.0.2` and
+  `jartero/highlightportal:6.0.2`
 
 ## Setup
 
@@ -129,7 +129,8 @@ keep it `false`.) If you replace the cert (self-signed or real), `docker compose
      hostname you put in `PUBLIC_HOST` (both are browser-facing, so both go through the nginx
      gateway on 443 - no port suffix):
      - `HL_ROOT_URL=https://<PUBLIC_HOST>/`
-     - `HL_KEYCLOAK_ADMIN_URL=https://<PUBLIC_HOST>/auth`
+     - `HL_KEYCLOAK_PUBLIC_URL=https://<PUBLIC_HOST>/auth`
+     - `HL_KEYCLOAK_INTERNAL_URL=https://<PUBLIC_HOST>/auth`
 
      Leave `HL_CVE_API_URL`/`HL_CVE_LOCAL_URL` as `http://cvedb:8082` - that's an internal
      docker-network address, not browser-facing, and doesn't change with `PUBLIC_HOST`.

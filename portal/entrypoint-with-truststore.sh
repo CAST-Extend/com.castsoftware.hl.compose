@@ -5,7 +5,7 @@
 # HL_KEYCLOAK_DISABLE_SSL_VALIDATION is not enough on its own: confirmed that the Keycloak
 # admin-client's token-grant call (KeycloakAdminServiceImpl -> TokenManager.grantToken, used
 # e.g. by createUser) still performs full PKIX validation regardless of that flag, so HTTPS
-# calls to HL_KEYCLOAK_ADMIN_URL fail with "unable to find valid certification path" even with
+# calls to HL_KEYCLOAK_INTERNAL_URL fail with "unable to find valid certification path" even with
 # it set to true. Actually trusting the cert fixes that call (and any other outbound HTTPS this
 # container makes to the gateway) properly instead of disabling validation.
 #

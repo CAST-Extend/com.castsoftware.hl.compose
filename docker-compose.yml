@@ -22,7 +22,7 @@ services:
     restart: unless-stopped
 
   keycloak:
-    image: jartero/hlkeycloak:1.0.6
+    image: jartero/hlkeycloak:1.0.10
     depends_on:
       postgres:
         condition: service_healthy
@@ -63,7 +63,7 @@ services:
       # Webhook / event listener SPI (Keycloak -> Highlight callback). Since hlkeycloak:1.0.6 these
       # are native Keycloak SPI options read by the hl-event-webhook listener itself - the old
       # KC_HL_WEBHOOK_URL/_SECRET names are ignored. Endpoint is KeycloakEventsWebService in the
-      # 6.0.1 WAR. Internal service DNS over plain HTTP on purpose: the upstream compose's
+      # 6.0.2 WAR. Internal service DNS over plain HTTP on purpose: the upstream compose's
       # KC_WEBHOOK_HOST_ALIAS + host-gateway extra_hosts only exists to reach a portal running on
       # the host over TLS (cert issued for its real DNS name) - not needed here, the portal is on
       # the same docker network and the SPI's HttpClient doesn't require https.
@@ -115,7 +115,7 @@ services:
     restart: unless-stopped
 
   cvedb:
-    image: jartero/cvedb:6.0.1
+    image: jartero/cvedb:6.0.2
     depends_on:
       postgres:
         condition: service_healthy
@@ -127,7 +127,7 @@ services:
     restart: unless-stopped
 
   highlightportal:
-    image: jartero/highlightportal:6.0.1
+    image: jartero/highlightportal:6.0.2
     depends_on:
       postgres:
         condition: service_healthy
