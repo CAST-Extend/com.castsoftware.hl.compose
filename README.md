@@ -81,7 +81,7 @@ keep it `false`.) If you replace the cert (self-signed or real), `docker compose
 ## Prerequisites
 
 - Docker Engine + Docker Compose v2 (`docker compose`, not the legacy standalone `docker-compose`)
-- Pull access to `jartero/hlkeycloak:1.0.10`, `jartero/cvedb:6.0.8` and
+- Pull access to `jartero/hlkeycloak:1.0.11`, `jartero/cvedb:6.0.8` and
   `jartero/highlightportal:6.0.8`
 
 ## Setup
