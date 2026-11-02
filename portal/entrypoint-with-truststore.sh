@@ -5,9 +5,11 @@
 # HL_KEYCLOAK_DISABLE_SSL_VALIDATION is not enough on its own: confirmed that the Keycloak
 # admin-client's token-grant call (KeycloakAdminServiceImpl -> TokenManager.grantToken, used
 # e.g. by createUser) still performs full PKIX validation regardless of that flag, so HTTPS
-# calls to HL_KEYCLOAK_INTERNAL_URL fail with "unable to find valid certification path" even with
-# it set to true. Actually trusting the cert fixes that call (and any other outbound HTTPS this
-# container makes to the gateway) properly instead of disabling validation.
+# calls to the gateway fail with "unable to find valid certification path" even with it set to
+# true. Actually trusting the cert fixes that call (and any other outbound HTTPS this container
+# makes to the gateway) properly instead of disabling validation. Since HL_KEYCLOAK_INTERNAL_URL
+# now points straight at http://keycloak:8080/auth, Keycloak calls no longer need this - kept
+# for any remaining outbound HTTPS to the gateway (e.g. HL_KEYCLOAK_PUBLIC_URL).
 #
 # $JAVA_HOME/lib/security/cacerts isn't writable by the image's non-root user (uid 5000), so we
 # copy it to a scratch location first rather than modifying it in place.

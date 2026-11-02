@@ -37,7 +37,13 @@ services:
       KC_PERMANENT_ADMIN_EMAIL: ${KC_PERMANENT_ADMIN_EMAIL:-change.me@castsoftware.com}
 
       # Hostname / routing
-      KC_HOSTNAME: ${PUBLIC_HOST:-localhost}
+      # Full public URL (as reached through the nginx gateway), not a bare host: the token issuer is
+      # then fixed whatever URL Keycloak is called on, so the portal's server-to-server calls can go
+      # straight to http://keycloak:8080/auth (HL_KEYCLOAK_INTERNAL_URL) and still get tokens whose
+      # issuer matches HL_KEYCLOAK_PUBLIC_URL. KC_HOSTNAME_BACKCHANNEL_DYNAMIC lets those calls see
+      # backchannel endpoints (token, userinfo, certs) on the URL they came in on. Same as hl-helmchart.
+      KC_HOSTNAME: https://${PUBLIC_HOST:-localhost}/auth
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
       KC_HTTP_RELATIVE_PATH: /auth
       KC_APP_PORT: "8080"
       # See Keycloak-Notes.md issue 5 - required, or post-init.sh's health check loops on HTTP 000 forever

@@ -62,12 +62,13 @@ expired.
 
 ---
 
-`HL_KEYCLOAK_INTERNAL_URL` in `portal/properties.hl-docker` is used by highlightportal for backend
-admin-API calls to Keycloak, not just browser links - now that it's `https://`, those calls need
-to trust whatever cert nginx presents. The `highlightportal` service's entrypoint is wrapped by
-`portal/entrypoint-with-truststore.sh`, which imports `nginx/certs/fullchain.pem` into the JVM's
-trust store before launching, so this works automatically regardless of which option above you
-used - no properties file changes needed. (`HL_KEYCLOAK_DISABLE_SSL_VALIDATION` is *not* a
+The portal's backend admin-API calls to Keycloak (`HL_KEYCLOAK_INTERNAL_URL` in
+`portal/properties.hl-docker`) go straight to `http://keycloak:8080/auth` over the docker network,
+not through nginx, so they don't depend on this cert. Any HTTPS call the portal still makes to the
+gateway itself has to trust whatever cert nginx presents: the `highlightportal` service's entrypoint
+is wrapped by `portal/entrypoint-with-truststore.sh`, which imports `nginx/certs/fullchain.pem` into
+the JVM's trust store before launching, so this works automatically regardless of which option above
+you used - no properties file changes needed. (`HL_KEYCLOAK_DISABLE_SSL_VALIDATION` is *not* a
 substitute for this - confirmed it doesn't cover every HTTPS call the portal makes to Keycloak;
 keep it `false`.) If you replace the cert (self-signed or real), `docker compose up -d
 --force-recreate highlightportal nginx` to pick up the new one.
@@ -130,10 +131,10 @@ keep it `false`.) If you replace the cert (self-signed or real), `docker compose
      gateway on 443 - no port suffix):
      - `HL_ROOT_URL=https://<PUBLIC_HOST>/`
      - `HL_KEYCLOAK_PUBLIC_URL=https://<PUBLIC_HOST>/auth`
-     - `HL_KEYCLOAK_INTERNAL_URL=https://<PUBLIC_HOST>/auth`
 
-     Leave `HL_CVE_API_URL`/`HL_CVE_LOCAL_URL` as `http://cvedb:8082` - that's an internal
-     docker-network address, not browser-facing, and doesn't change with `PUBLIC_HOST`.
+     Leave `HL_CVE_API_URL`/`HL_CVE_LOCAL_URL` as `http://cvedb:8082` and
+     `HL_KEYCLOAK_INTERNAL_URL` as `http://keycloak:8080/auth` - those are internal
+     docker-network addresses, not browser-facing, and don't change with `PUBLIC_HOST`.
 
      This file is a static bind-mount, not `.env`-driven, so it has to be edited by hand and kept
      in sync manually - see the comment at the top of its "Hostname" section.
