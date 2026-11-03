@@ -10,8 +10,21 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-HOST="${1:-$(grep -E '^PUBLIC_HOST=' ../.env 2>/dev/null | cut -d= -f2)}"
-HOST="${HOST:-localhost}"
+if [ -n "${1:-}" ]; then
+  HOST="$1"
+  SOURCE="command line"
+else
+  # Strip CR (.env edited on Windows) and surrounding quotes.
+  HOST="$(grep -E '^PUBLIC_HOST=' ../.env 2>/dev/null | tail -n1 | cut -d= -f2- | tr -d '\r"'"'" || true)"
+  SOURCE="../.env"
+fi
+if [ -z "${HOST}" ]; then
+  HOST=localhost
+  SOURCE="default"
+  echo "WARNING: no PUBLIC_HOST found (../.env missing or has no PUBLIC_HOST= line) - using 'localhost'." >&2
+  echo "         Create ../.env first, or pass the hostname: $0 <hostname>" >&2
+fi
+echo "Generating cert for '${HOST}' (from ${SOURCE})."
 
 mkdir -p certs
 
